@@ -1,106 +1,207 @@
 # Managed On-Prem Setup
 
-Create AWS IAM credentials for [Caution](https://caution.dev) managed on-premises deployments.
+Create AWS infrastructure and IAM credentials for [Caution](https://caution.co) managed on-premises deployments.
 
-This creates an IAM user with the minimum permissions required to deploy enclaves to your AWS account.
+| Step | Description |
+|------|-------------|
+| [1. Run Setup Script](#1-run-setup-script) | Run Docker to create isolated AWS infrastructure |
+| [2. Upload to Platform](#2-upload-to-platform) | Send encrypted credentials to Caution |
 
-## Setup Options
+## 1. Run Setup Script
 
-Choose your preferred method:
-
-| Method | Directory | Prerequisites |
-|--------|-----------|---------------|
-| [Terraform/OpenTofu](aws/tf/) | `aws/tf/` | Terraform or OpenTofu |
-| [AWS SDK (Python)](aws/sdk/) | `aws/sdk/` | Python 3, boto3 |
-
-## Quick Start
-
-### Option 1: Terraform
+Prerequisites:
+- Docker
+- AWS credentials with admin permissions (used only during setup)
 
 ```bash
-cd aws/tf
-./setup.sh
+docker build -t caution-provisioner-setup .
+
+docker run --rm \
+  -e AWS_ACCESS_KEY_ID="your-admin-key" \
+  -e AWS_SECRET_ACCESS_KEY="your-admin-secret" \
+  -e AWS_REGION="us-west-2" \
+  -v "$(pwd)/out:/out" \
+  caution-provisioner-setup
 ```
 
-### Option 2: Python SDK
+This outputs `credentials.json.gpg` to the `out/` directory.
+
+### Optional: Use Existing VPC
+
+If you want to use an existing VPC instead of creating a new one:
 
 ```bash
-cd aws/sdk
-pip install boto3
-python setup.py
+docker run --rm \
+  -e AWS_ACCESS_KEY_ID="your-admin-key" \
+  -e AWS_SECRET_ACCESS_KEY="your-admin-secret" \
+  -e AWS_REGION="us-west-2" \
+  -e VPC_ID="vpc-xxxxxxxx" \
+  -v "$(pwd)/out:/out" \
+  caution-provisioner-setup
 ```
 
-## Permissions Created
+## 2. Upload to Platform
 
-The IAM user has permissions for:
-- **EC2**: Create/manage instances, security groups, EIPs
-- **VPC**: Read-only access for subnet selection
-- **EBS**: Volume management
-- **Tags**: Resource tagging
+1. Upload `credentials.json.gpg` to the Caution Platform via CLI or UI
+2. Add `managed_on_prem: true` to your `Procfile`
+3. Deploy with: `caution init && git push caution main`
 
-## Restricting Permissions
+---
 
-The default policy is permissive for ease of setup. You can modify the scripts to create a more restrictive policy:
+## How It Works
 
-### Limit to specific regions
+The setup script creates an isolated AWS environment for running Caution enclaves:
 
-Add a condition to restrict deployments to specific AWS regions:
+1. **VPC** - A dedicated /16 VPC with:
+   - Public subnets across multiple availability zones
+   - Internet gateway with routing
+   - DNS hostname support enabled
 
-```json
-"Condition": {
-  "StringEquals": {
-    "aws:RequestedRegion": ["us-west-2", "us-east-1"]
-  }
-}
+2. **S3 Bucket** - For storing enclave image files (EIFs):
+   - Named `caution-<deployment-id>-images`
+   - Public access blocked
+   - Tagged with deployment ID
+
+3. **EC2 Instance Role** - Allows enclave instances to:
+   - Read EIF images from the S3 bucket
+   - Attached via instance profile to launched instances
+
+4. **Launch Template** - Preconfigured for enclave instances:
+   - Uses Amazon Linux 2023 AMI
+   - Attaches the EC2 instance role
+   - Tags instances with deployment ID
+
+5. **Auto Scaling Group** - Manages enclave instances:
+   - Starts with 0 instances (Caution scales as needed)
+   - Uses the launch template
+   - Spans all subnets in the VPC
+
+6. **Scoped IAM User** - Credentials for Caution to manage the deployment:
+   - Can only manage resources tagged with the deployment ID
+   - Can only access the specific S3 bucket
+   - Can only scale the specific ASG
+   - Encrypted with Caution's public key before output
+
+## Security Model
+
+### Tag-Based Resource Scoping
+
+All resources are tagged with:
+```
+caution:deployment-id = <deployment-id>
 ```
 
-### Limit to specific VPCs
+The IAM policy uses AWS condition keys to enforce scope:
+- `aws:ResourceTag/caution:deployment-id` - For existing resources
+- `aws:RequestTag/caution:deployment-id` - For new resources
 
-Restrict instance creation to specific VPCs:
+### What the Scoped Credentials CAN Do
 
-```json
-"Condition": {
-  "StringEquals": {
-    "ec2:Vpc": "arn:aws:ec2:us-west-2:123456789012:vpc/vpc-abc123"
-  }
-}
+- Read/write EIF images to the deployment's S3 bucket
+- Start/stop/terminate EC2 instances with the deployment tag
+- Create new instances via the ASG (automatically tagged)
+- Manage volumes, security groups, and EIPs with the deployment tag
+- Scale the specific Auto Scaling Group
+- Create and manage launch template versions
+
+### What the Scoped Credentials CANNOT Do
+
+- Access any resources without the deployment tag
+- Access other S3 buckets
+- Modify other Auto Scaling Groups or launch templates
+- Access resources in other deployments
+- Escalate privileges or modify IAM policies
+- Access network resources outside the deployment VPC
+
+## Updating IAM Policy
+
+To update the IAM policy for an existing deployment (e.g., after script improvements):
+
+```bash
+docker run --rm \
+  -e AWS_ACCESS_KEY_ID="your-admin-key" \
+  -e AWS_SECRET_ACCESS_KEY="your-admin-secret" \
+  -e AWS_REGION="us-west-2" \
+  -e DEPLOYMENT_ID="your-deployment-id" \
+  -e VPC_ID="vpc-xxxxxxxx" \
+  caution-provisioner-setup python setup.py --update-policy
 ```
 
-### Limit to specific subnets
+## Cleanup
 
-Restrict to specific subnets within a VPC:
+**WARNING**: Running this will break Caution's ability to manage resources in your AWS account.
 
-```json
-"Condition": {
-  "StringEquals": {
-    "ec2:Subnet": [
-      "arn:aws:ec2:us-west-2:123456789012:subnet/subnet-abc123",
-      "arn:aws:ec2:us-west-2:123456789012:subnet/subnet-def456"
-    ]
-  }
-}
+To remove all resources created by this setup:
+
+```bash
+DEPLOYMENT_ID="your-deployment-id"
+ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+REGION="us-west-2"
+
+# Delete Auto Scaling Group
+aws autoscaling delete-auto-scaling-group \
+  --auto-scaling-group-name "caution-provisioner-asg-$DEPLOYMENT_ID" \
+  --force-delete
+
+# Delete Launch Template
+aws ec2 delete-launch-template \
+  --launch-template-name "caution-provisioner-lt-$DEPLOYMENT_ID"
+
+# Delete IAM User and Policy
+aws iam detach-user-policy \
+  --user-name "caution-provisioner-$DEPLOYMENT_ID" \
+  --policy-arn "arn:aws:iam::$ACCOUNT_ID:policy/CautionScopedAccess-$DEPLOYMENT_ID"
+aws iam list-access-keys --user-name "caution-provisioner-$DEPLOYMENT_ID" \
+  --query 'AccessKeyMetadata[].AccessKeyId' --output text | \
+  xargs -I {} aws iam delete-access-key \
+    --user-name "caution-provisioner-$DEPLOYMENT_ID" --access-key-id {}
+aws iam delete-user --user-name "caution-provisioner-$DEPLOYMENT_ID"
+aws iam delete-policy \
+  --policy-arn "arn:aws:iam::$ACCOUNT_ID:policy/CautionScopedAccess-$DEPLOYMENT_ID"
+
+# Delete EC2 Instance Role and Profile
+aws iam remove-role-from-instance-profile \
+  --instance-profile-name "caution-ec2-profile-$DEPLOYMENT_ID" \
+  --role-name "caution-ec2-role-$DEPLOYMENT_ID"
+aws iam delete-instance-profile \
+  --instance-profile-name "caution-ec2-profile-$DEPLOYMENT_ID"
+aws iam delete-role-policy \
+  --role-name "caution-ec2-role-$DEPLOYMENT_ID" \
+  --policy-name "EifBucketAccess"
+aws iam delete-role --role-name "caution-ec2-role-$DEPLOYMENT_ID"
+
+# Empty and delete S3 bucket
+aws s3 rm "s3://caution-$DEPLOYMENT_ID-images" --recursive
+aws s3 rb "s3://caution-$DEPLOYMENT_ID-images"
+
+# Delete VPC resources (if created by setup)
+# Get VPC ID first
+VPC_ID=$(aws ec2 describe-vpcs \
+  --filters "Name=tag:caution:deployment-id,Values=$DEPLOYMENT_ID" \
+  --query 'Vpcs[0].VpcId' --output text)
+
+if [ "$VPC_ID" != "None" ]; then
+  # Delete subnets
+  aws ec2 describe-subnets --filters "Name=vpc-id,Values=$VPC_ID" \
+    --query 'Subnets[].SubnetId' --output text | \
+    xargs -n1 aws ec2 delete-subnet --subnet-id
+
+  # Detach and delete internet gateway
+  IGW_ID=$(aws ec2 describe-internet-gateways \
+    --filters "Name=attachment.vpc-id,Values=$VPC_ID" \
+    --query 'InternetGateways[0].InternetGatewayId' --output text)
+  if [ "$IGW_ID" != "None" ]; then
+    aws ec2 detach-internet-gateway --internet-gateway-id "$IGW_ID" --vpc-id "$VPC_ID"
+    aws ec2 delete-internet-gateway --internet-gateway-id "$IGW_ID"
+  fi
+
+  # Delete route tables (except main)
+  aws ec2 describe-route-tables \
+    --filters "Name=vpc-id,Values=$VPC_ID" "Name=association.main,Values=false" \
+    --query 'RouteTables[].RouteTableId' --output text | \
+    xargs -n1 aws ec2 delete-route-table --route-table-id
+
+  # Delete VPC
+  aws ec2 delete-vpc --vpc-id "$VPC_ID"
+fi
 ```
-
-### Limit instance types
-
-Restrict to specific instance types (e.g., only Nitro enclave-capable):
-
-```json
-"Condition": {
-  "StringEquals": {
-    "ec2:InstanceType": ["c5.xlarge", "c5.2xlarge", "m5.xlarge"]
-  }
-}
-```
-
-Edit `aws/tf/main.tf` or `aws/sdk/setup.py` to add these conditions to the policy statements.
-
-## Adding to Caution
-
-1. Run setup using either method above
-2. Copy the Access Key ID and Secret Access Key
-3. Go to your Caution dashboard → Cloud Credentials
-4. Add the credentials
-5. Add the `managed_on_prem: true` value in your `Procfile`
-  * Optional values such as `region`, `vpc` etc. are available (TODO link to docs)
-6. Deploy with: `caution init && git push caution main`
