@@ -14,12 +14,13 @@ Prerequisites:
 - AWS credentials with admin permissions (used only during setup)
 
 ```bash
+# Copy the example env file and fill in your credentials
+cp .env.example .env
+
 docker build -t caution-provisioner-setup .
 
 docker run --rm \
-  -e AWS_ACCESS_KEY_ID="your-admin-key" \
-  -e AWS_SECRET_ACCESS_KEY="your-admin-secret" \
-  -e AWS_REGION="us-west-2" \
+  --env-file .env \
   -v "$(pwd)/out:/out" \
   caution-provisioner-setup
 ```
@@ -28,16 +29,10 @@ This outputs `credentials.json.gpg` to the `out/` directory.
 
 ### Optional: Use Existing VPC
 
-If you want to use an existing VPC instead of creating a new one:
+If you want to use an existing VPC instead of creating a new one, uncomment and set `VPC_ID` in your `.env` file:
 
-```bash
-docker run --rm \
-  -e AWS_ACCESS_KEY_ID="your-admin-key" \
-  -e AWS_SECRET_ACCESS_KEY="your-admin-secret" \
-  -e AWS_REGION="us-west-2" \
-  -e VPC_ID="vpc-xxxxxxxx" \
-  -v "$(pwd)/out:/out" \
-  caution-provisioner-setup
+```
+VPC_ID=vpc-xxxxxxxx
 ```
 
 ## 2. Upload to Platform
@@ -115,15 +110,18 @@ The IAM policy uses AWS condition keys to enforce scope:
 
 ## Updating IAM Policy
 
-To update the IAM policy for an existing deployment (e.g., after script improvements):
+To update the IAM policy for an existing deployment (e.g., after script improvements), set `DEPLOYMENT_ID` and `VPC_ID` in your `.env` file:
+
+```
+DEPLOYMENT_ID=your-deployment-id
+VPC_ID=vpc-xxxxxxxx
+```
+
+Then run:
 
 ```bash
 docker run --rm \
-  -e AWS_ACCESS_KEY_ID="your-admin-key" \
-  -e AWS_SECRET_ACCESS_KEY="your-admin-secret" \
-  -e AWS_REGION="us-west-2" \
-  -e DEPLOYMENT_ID="your-deployment-id" \
-  -e VPC_ID="vpc-xxxxxxxx" \
+  --env-file .env \
   caution-provisioner-setup python setup.py --update-policy
 ```
 
