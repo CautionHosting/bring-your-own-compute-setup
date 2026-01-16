@@ -3,7 +3,7 @@ Create AWS infrastructure for a managed on-premises Caution deployment.
 
 This script creates an isolated environment for running Caution enclaves:
 1. Creates a dedicated VPC with subnets, internet gateway, and routing
-2. Creates an S3 bucket for EIF storage
+2. Creates an S3 bucket for enclave image storage
 3. Creates an EC2 instance role and launch template
 4. Creates an Auto Scaling Group with a unique deployment tag
 5. Creates an IAM user with permissions scoped to only these resources
@@ -175,7 +175,7 @@ def create_vpc(ec2, deployment_id, region):
 
 
 def create_eif_bucket(s3, deployment_id, region):
-    """Create an S3 bucket for storing EIF images."""
+    """Create an S3 bucket for storing enclave images."""
     bucket_name = f"caution-{deployment_id}-images"
 
     create_params = {"Bucket": bucket_name}
@@ -208,7 +208,7 @@ def create_eif_bucket(s3, deployment_id, region):
 
 
 def create_ec2_instance_role(iam, deployment_id, bucket_name):
-    """Create an IAM role for EC2 instances to read from the EIF bucket."""
+    """Create an IAM role for EC2 instances to read from the enclave image bucket."""
     role_name = f"caution-ec2-role-{deployment_id}"
     profile_name = f"caution-ec2-profile-{deployment_id}"
 
@@ -621,11 +621,6 @@ def update_iam_policy(iam, account_id, region, deployment_id, eif_bucket, vpc_id
 
 
 def main():
-    print("=" * 60)
-    print("Caution Managed On-Prem Setup - ASG-Scoped Credentials")
-    print("=" * 60)
-    print()
-
     # Check for --update-policy flag
     update_policy_only = "--update-policy" in sys.argv
 
@@ -703,9 +698,9 @@ def main():
         print(f"  VPC: {vpc_id}")
         print(f"  Subnets: {len(subnets)} created")
 
-    # Create S3 bucket for EIF storage
+    # Create S3 bucket for enclave image storage
     print()
-    print("[2/6] Creating S3 bucket for EIF storage...")
+    print("[2/6] Creating S3 bucket for enclave image storage...")
     eif_bucket = create_eif_bucket(s3, deployment_id, region)
     print(f"  Bucket: {eif_bucket}")
 
@@ -742,13 +737,6 @@ def main():
     print(f"  IAM User: {user_name}")
     print("  Access key created")
 
-    # Output results
-    print()
-    print("=" * 60)
-    print("Setup Complete")
-    print("=" * 60)
-    print()
-
     credentials = {
         "platform": "aws",
         "managed_on_prem": True,
@@ -768,7 +756,6 @@ def main():
         "scope_tag": f"{SCOPE_TAG_KEY}={deployment_id}",
     }
 
-    # Write credentials to file
     creds_file = os.environ.get("OUTPUT_FILE", "/out/credentials.json")
     os.makedirs(os.path.dirname(creds_file), exist_ok=True)
 
@@ -776,19 +763,9 @@ def main():
         json.dump(credentials, f, indent=2)
     os.chmod(creds_file, 0o600)
 
-    print(f"Credentials written to: {creds_file}")
     print()
-    print("Resource scope:")
-    print(f"  - ASG: {asg_name}")
-    print(f"  - EIF Bucket: {eif_bucket}")
-    print(f"  - Tag: {SCOPE_TAG_KEY}={deployment_id}")
-    print()
-    print("The generated IAM credentials can ONLY manage resources")
-    print("that have the above tag. This includes:")
-    print("  - EC2 instances launched by the ASG")
-    print("  - Volumes, security groups, and EIPs with this tag")
-    print("  - Read/write access to the EIF S3 bucket")
-    print()
+    print(f"[OK] AWS provisioning complete")
+    print(f"     Deployment ID: {deployment_id}")
 
     return credentials
 

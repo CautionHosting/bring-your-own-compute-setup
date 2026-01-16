@@ -52,13 +52,13 @@ The setup script creates an isolated AWS environment for running Caution enclave
    - Internet gateway with routing
    - DNS hostname support enabled
 
-2. **S3 Bucket** - For storing enclave image files (EIFs):
+2. **S3 Bucket** - For storing enclave images:
    - Named `caution-<deployment-id>-images`
    - Public access blocked
    - Tagged with deployment ID
 
 3. **EC2 Instance Role** - Allows enclave instances to:
-   - Read EIF images from the S3 bucket
+   - Read enclave images from the S3 bucket
    - Attached via instance profile to launched instances
 
 4. **Launch Template** - Preconfigured for enclave instances:
@@ -92,7 +92,7 @@ The IAM policy uses AWS condition keys to enforce scope:
 
 ### What the Scoped Credentials CAN Do
 
-- Read/write EIF images to the deployment's S3 bucket
+- Read/write enclave images to the deployment's S3 bucket
 - Start/stop/terminate EC2 instances with the deployment tag
 - Create new instances via the ASG (automatically tagged)
 - Manage volumes, security groups, and EIPs with the deployment tag
@@ -125,81 +125,28 @@ docker run --rm \
   caution-provisioner-setup python setup.py --update-policy
 ```
 
-## Cleanup
+## Teardown
 
-**WARNING**: Running this will break Caution's ability to manage resources in your AWS account.
+**WARNING**: This will permanently delete all resources and break Caution's ability to manage this deployment.
 
-To remove all resources created by this setup:
+To remove all resources created by setup, set `DEPLOYMENT_ID` in your `.env` file (you can find this in the `credentials.json` from the original setup):
+
+```
+DEPLOYMENT_ID=your-deployment-id
+```
+
+Then run:
 
 ```bash
-DEPLOYMENT_ID="your-deployment-id"
-ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
-REGION="us-west-2"
-
-# Delete Auto Scaling Group
-aws autoscaling delete-auto-scaling-group \
-  --auto-scaling-group-name "caution-provisioner-asg-$DEPLOYMENT_ID" \
-  --force-delete
-
-# Delete Launch Template
-aws ec2 delete-launch-template \
-  --launch-template-name "caution-provisioner-lt-$DEPLOYMENT_ID"
-
-# Delete IAM User and Policy
-aws iam detach-user-policy \
-  --user-name "caution-provisioner-$DEPLOYMENT_ID" \
-  --policy-arn "arn:aws:iam::$ACCOUNT_ID:policy/CautionScopedAccess-$DEPLOYMENT_ID"
-aws iam list-access-keys --user-name "caution-provisioner-$DEPLOYMENT_ID" \
-  --query 'AccessKeyMetadata[].AccessKeyId' --output text | \
-  xargs -I {} aws iam delete-access-key \
-    --user-name "caution-provisioner-$DEPLOYMENT_ID" --access-key-id {}
-aws iam delete-user --user-name "caution-provisioner-$DEPLOYMENT_ID"
-aws iam delete-policy \
-  --policy-arn "arn:aws:iam::$ACCOUNT_ID:policy/CautionScopedAccess-$DEPLOYMENT_ID"
-
-# Delete EC2 Instance Role and Profile
-aws iam remove-role-from-instance-profile \
-  --instance-profile-name "caution-ec2-profile-$DEPLOYMENT_ID" \
-  --role-name "caution-ec2-role-$DEPLOYMENT_ID"
-aws iam delete-instance-profile \
-  --instance-profile-name "caution-ec2-profile-$DEPLOYMENT_ID"
-aws iam delete-role-policy \
-  --role-name "caution-ec2-role-$DEPLOYMENT_ID" \
-  --policy-name "EifBucketAccess"
-aws iam delete-role --role-name "caution-ec2-role-$DEPLOYMENT_ID"
-
-# Empty and delete S3 bucket
-aws s3 rm "s3://caution-$DEPLOYMENT_ID-images" --recursive
-aws s3 rb "s3://caution-$DEPLOYMENT_ID-images"
-
-# Delete VPC resources (if created by setup)
-# Get VPC ID first
-VPC_ID=$(aws ec2 describe-vpcs \
-  --filters "Name=tag:caution:deployment-id,Values=$DEPLOYMENT_ID" \
-  --query 'Vpcs[0].VpcId' --output text)
-
-if [ "$VPC_ID" != "None" ]; then
-  # Delete subnets
-  aws ec2 describe-subnets --filters "Name=vpc-id,Values=$VPC_ID" \
-    --query 'Subnets[].SubnetId' --output text | \
-    xargs -n1 aws ec2 delete-subnet --subnet-id
-
-  # Detach and delete internet gateway
-  IGW_ID=$(aws ec2 describe-internet-gateways \
-    --filters "Name=attachment.vpc-id,Values=$VPC_ID" \
-    --query 'InternetGateways[0].InternetGatewayId' --output text)
-  if [ "$IGW_ID" != "None" ]; then
-    aws ec2 detach-internet-gateway --internet-gateway-id "$IGW_ID" --vpc-id "$VPC_ID"
-    aws ec2 delete-internet-gateway --internet-gateway-id "$IGW_ID"
-  fi
-
-  # Delete route tables (except main)
-  aws ec2 describe-route-tables \
-    --filters "Name=vpc-id,Values=$VPC_ID" "Name=association.main,Values=false" \
-    --query 'RouteTables[].RouteTableId' --output text | \
-    xargs -n1 aws ec2 delete-route-table --route-table-id
-
-  # Delete VPC
-  aws ec2 delete-vpc --vpc-id "$VPC_ID"
-fi
+docker run --rm \
+  --env-file .env \
+  caution-provisioner-setup python teardown.py
 ```
+
+This will delete:
+- Auto Scaling Group
+- Launch Template
+- IAM User and Policy
+- EC2 Instance Role and Profile
+- S3 Bucket (emptied first)
+- VPC and related resources (if created by setup)
