@@ -10,6 +10,7 @@ if [ -z "$AWS_ACCESS_KEY_ID" ] || [ -z "$AWS_SECRET_ACCESS_KEY" ]; then
     echo "  AWS_SECRET_ACCESS_KEY  - AWS secret key" >&2
     echo "" >&2
     echo "Optional environment variables:" >&2
+    echo "  AWS_SESSION_TOKEN      - AWS session token (for temporary credentials from assumed roles)" >&2
     echo "  AWS_REGION             - AWS region (default: us-west-2)" >&2
     echo "  DEPLOYMENT_ID          - Custom deployment ID (auto-generated if not set)" >&2
     echo "  TEARDOWN               - Set to 'true' to run teardown instead of setup" >&2

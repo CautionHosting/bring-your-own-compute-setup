@@ -2,20 +2,74 @@
 
 Create AWS infrastructure and IAM credentials for [Caution](https://caution.co) managed on-premises deployments.
 
-| Step | Description |
-|------|-------------|
-| [1. Run Setup Script](#1-run-setup-script) | Run Docker to create isolated AWS infrastructure |
-| [2. Upload to Platform](#2-upload-to-platform) | Send encrypted credentials to Caution |
+Before running anything, we encourage you to review the code in this repository to understand exactly what resources will be created in your AWS account. The [How It Works](#how-it-works) and [Security Model](#security-model) sections below also explain the infrastructure and permissions in detail.
 
-## 1. Run Setup Script
+## Requirements
 
-Prerequisites:
-- Docker
-- AWS credentials with admin permissions (used only during setup)
+* Docker
+* [Caution CLI](https://codeberg.org/caution/cli) (for automated setup)
+* AWS credentials configured
+
+## Step 1: Configure AWS Credentials
+
+You can use either admin credentials or a least-privilege role. We recommend the least-privilege approach.
+
+### Option A: Least-Privilege Role (Recommended)
+
+Create an IAM role with only the permissions needed to run the provisioner:
+
+1. Go to IAM → Policies → Create Policy
+2. Select JSON and paste the contents of [`provisioner-role-policy.json`](./provisioner-role-policy.json)
+3. Name it `CautionProvisionerPolicy`
+4. Go to IAM → Roles → Create Role
+5. Select "AWS account" as trusted entity (your own account)
+6. Attach `CautionProvisionerPolicy`
+7. Name it `CautionProvisionerRole`
+
+Then add a profile to `~/.aws/config` that assumes the role:
+
+```ini
+[profile caution-provisioner]
+role_arn = arn:aws:iam::YOUR_ACCOUNT_ID:role/CautionProvisionerRole
+source_profile = default
+region = us-west-2
+```
+
+Replace `YOUR_ACCOUNT_ID` with your AWS account ID and `default` with the profile that has permission to assume the role.
+
+### Option B: Admin Credentials
+
+Use your existing AWS credentials with admin permissions. Faster to set up but grants more access than necessary.
+
+## Step 2: Run the Provisioner
+
+Choose one of the following methods. Both respect the `AWS_PROFILE` environment variable if you configured a least-privilege role above.
+
+### Option A: Caution CLI (Recommended)
 
 ```bash
-# Copy the example env file and fill in your credentials
+caution init --managed-on-prem
+```
+
+If you configured a least-privilege role, set the profile first:
+
+```bash
+AWS_PROFILE=caution-provisioner caution init --managed-on-prem
+```
+
+This will:
+1. Detect your AWS credentials
+2. Provision all required AWS infrastructure
+3. Create your app on Caution
+4. Register the credentials automatically
+
+### Option B: Manual Docker Setup
+
+If you prefer to run the provisioner manually or need more control:
+
+```bash
 cp .env.example .env
+# Edit .env with your AWS credentials
 
 docker build -t caution-provisioner-setup .
 
@@ -25,21 +79,13 @@ docker run --rm \
   caution-provisioner-setup
 ```
 
-This outputs `credentials.json.gpg` to the `out/` directory.
+This outputs `credentials.json.gpg` to the `out/` directory. Then initialize the app with the encrypted credentials:
 
-### Optional: Use Existing VPC
-
-If you want to use an existing VPC instead of creating a new one, uncomment and set `VPC_ID` in your `.env` file:
-
-```
-VPC_ID=vpc-xxxxxxxx
+```bash
+caution init --managed-on-prem --config out/credentials.json.gpg
 ```
 
-## 2. Upload to Platform
-
-1. Upload `credentials.json.gpg` to the Caution Platform via CLI or UI
-2. Add `managed_on_prem: true` to your `Procfile`
-3. Deploy with: `caution init && git push caution main`
+To use an existing VPC instead of creating a new one, set `VPC_ID=vpc-xxxxxxxx` in your `.env` file.
 
 ---
 
@@ -75,7 +121,6 @@ The setup script creates an isolated AWS environment for running Caution enclave
    - Can only manage resources tagged with the deployment ID
    - Can only access the specific S3 bucket
    - Can only scale the specific ASG
-   - Encrypted with Caution's public key before output
 
 ## Security Model
 
@@ -108,6 +153,12 @@ The IAM policy uses AWS condition keys to enforce scope:
 - Escalate privileges or modify IAM policies
 - Access network resources outside the deployment VPC
 
+### Credential Encryption
+
+When using the manual Docker setup, credentials are GPG-encrypted to Caution's public key before being written to disk. The `.gpg` file can only be decrypted by Caution, so credentials remain protected even if the file is intercepted. You can verify the public key at [`caution-public-key.asc`](./caution-public-key.asc).
+
+When using the CLI, credentials are encrypted and transmitted over TLS without being written to disk.
+
 ## Updating IAM Policy
 
 To update the IAM policy for an existing deployment (e.g., after script improvements), set `DEPLOYMENT_ID` and `VPC_ID` in your `.env` file:
@@ -129,7 +180,7 @@ docker run --rm \
 
 **WARNING**: This will permanently delete all resources and break Caution's ability to manage this deployment.
 
-To remove all resources created by setup, set `DEPLOYMENT_ID` in your `.env` file (you can find this in the `credentials.json` from the original setup):
+To remove all resources created by setup, set `DEPLOYMENT_ID` in your `.env` file (printed at the end of setup, or visible in the AWS console on tagged resources):
 
 ```
 DEPLOYMENT_ID=your-deployment-id
