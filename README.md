@@ -180,7 +180,17 @@ docker run --rm \
 
 **WARNING**: This will permanently delete all resources and break Caution's ability to manage this deployment.
 
-To remove all resources created by setup, set `DEPLOYMENT_ID` in your `.env` file (printed at the end of setup, or visible in the AWS console on tagged resources):
+### Option A: Caution CLI
+
+If you set up using the CLI, run teardown from the app directory:
+
+```bash
+caution teardown --managed-on-prem
+```
+
+### Option B: Manual Docker Teardown
+
+Set `DEPLOYMENT_ID` in your `.env` file (printed at the end of setup, or visible in the AWS console on tagged resources):
 
 ```
 DEPLOYMENT_ID=your-deployment-id
