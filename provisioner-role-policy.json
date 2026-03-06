@@ -25,7 +25,8 @@
         "ec2:CreateSubnet",
         "ec2:CreateRouteTable",
         "ec2:CreateRoute",
-        "ec2:AssociateRouteTable"
+        "ec2:AssociateRouteTable",
+        "ec2:ModifySubnetAttribute"
       ],
       "Resource": "*"
     },
@@ -84,6 +85,8 @@
         "iam:RemoveRoleFromInstanceProfile",
         "iam:GetInstanceProfile",
         "iam:PassRole",
+        "iam:DetachRolePolicy",
+        "iam:ListAttachedRolePolicies",
         "iam:TagRole",
         "iam:TagInstanceProfile"
       ],
