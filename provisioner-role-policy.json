@@ -129,7 +129,10 @@
         "iam:GetPolicyVersion",
         "iam:TagPolicy"
       ],
-      "Resource": "arn:aws:iam::*:policy/caution-*"
+      "Resource": [
+        "arn:aws:iam::*:policy/caution-*",
+        "arn:aws:iam::*:policy/CautionScopedAccess-*"
+      ]
     }
   ]
 }
