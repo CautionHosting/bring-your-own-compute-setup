@@ -36,7 +36,8 @@
       "Action": [
         "ec2:CreateLaunchTemplate",
         "ec2:DescribeLaunchTemplates",
-        "ec2:DescribeLaunchTemplateVersions"
+        "ec2:DescribeLaunchTemplateVersions",
+        "ec2:RunInstances"
       ],
       "Resource": "*"
     },
