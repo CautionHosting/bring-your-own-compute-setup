@@ -72,7 +72,9 @@
         "iam:AddRoleToInstanceProfile",
         "iam:RemoveRoleFromInstanceProfile",
         "iam:GetInstanceProfile",
-        "iam:PassRole"
+        "iam:PassRole",
+        "iam:TagRole",
+        "iam:TagInstanceProfile"
       ],
       "Resource": [
         "arn:aws:iam::*:role/caution-*",
@@ -93,7 +95,8 @@
         "iam:DeleteUserPolicy",
         "iam:AttachUserPolicy",
         "iam:DetachUserPolicy",
-        "iam:ListAttachedUserPolicies"
+        "iam:ListAttachedUserPolicies",
+        "iam:TagUser"
       ],
       "Resource": "arn:aws:iam::*:user/caution-*"
     },
@@ -107,7 +110,8 @@
         "iam:ListPolicyVersions",
         "iam:CreatePolicyVersion",
         "iam:DeletePolicyVersion",
-        "iam:GetPolicyVersion"
+        "iam:GetPolicyVersion",
+        "iam:TagPolicy"
       ],
       "Resource": "arn:aws:iam::*:policy/caution-*"
     }
