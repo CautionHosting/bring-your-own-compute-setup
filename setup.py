@@ -577,6 +577,12 @@ def create_iam_user(iam, account_id, user_name, policy_document, deployment_id):
 
     # Create access key
     key_response = iam.create_access_key(UserName=user_name)
+
+    # Wait for IAM eventual consistency — new credentials may not be
+    # usable immediately across all AWS endpoints.
+    print("  Waiting for IAM credentials to propagate...")
+    time.sleep(15)
+
     return key_response["AccessKey"]["AccessKeyId"], key_response["AccessKey"]["SecretAccessKey"]
 
 
