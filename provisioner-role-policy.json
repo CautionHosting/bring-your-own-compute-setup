@@ -53,7 +53,7 @@
       "Action": [
         "s3:CreateBucket",
         "s3:PutBucketTagging",
-        "s3:PutPublicAccessBlock"
+        "s3:PutBucketPublicAccessBlock"
       ],
       "Resource": "arn:aws:s3:::caution-*"
     },
