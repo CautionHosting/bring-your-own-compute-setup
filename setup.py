@@ -474,7 +474,12 @@ def create_scoped_iam_policy(account_id, region, deployment_id, eif_bucket, vpc_
         {
             "Effect": "Allow",
             "Action": ["iam:GetInstanceProfile", "iam:GetRole", "iam:GetRolePolicy", "iam:ListRolePolicies", "iam:ListAttachedRolePolicies"],
-            "Resource": [f"arn:aws:iam::{a}:role/caution-ec2-role-*", f"arn:aws:iam::{a}:instance-profile/caution-ec2-profile-*"],
+            "Resource": [
+                f"arn:aws:iam::{a}:role/caution-ec2-role-*",
+                f"arn:aws:iam::{a}:role/caution-builder-role-*",
+                f"arn:aws:iam::{a}:instance-profile/caution-ec2-profile-*",
+                f"arn:aws:iam::{a}:instance-profile/caution-builder-profile-*",
+            ],
         },
         # Manage tagged instances
         {
@@ -498,7 +503,10 @@ def create_scoped_iam_policy(account_id, region, deployment_id, eif_bucket, vpc_
         {
             "Effect": "Allow",
             "Action": "iam:PassRole",
-            "Resource": f"arn:aws:iam::{a}:role/caution-ec2-role-*",
+            "Resource": [
+                f"arn:aws:iam::{a}:role/caution-ec2-role-*",
+                f"arn:aws:iam::{a}:role/caution-builder-role-*",
+            ],
             "Condition": {"StringEquals": {"iam:PassedToService": "ec2.amazonaws.com"}},
         },
         # Create resources with tag

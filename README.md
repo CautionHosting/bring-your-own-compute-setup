@@ -79,7 +79,7 @@ docker run --rm \
   caution-provisioner-setup
 ```
 
-This outputs `credentials.json.gpg` to the `out/` directory. The decrypted credentials payload includes `builder_instance_profile_name` for workloads that need to publish new image objects into the deployment bucket. Then initialize the app with the encrypted credentials:
+This outputs `credentials.json.gpg` to the `out/` directory. The decrypted credentials payload includes `builder_instance_profile_name` for workloads that need to publish new image objects into the deployment bucket, and the scoped IAM credentials can assign that builder instance profile to EC2 builder instances. Then initialize the app with the encrypted credentials:
 
 ```bash
 caution init --managed-on-prem --config out/credentials.json.gpg
@@ -110,7 +110,7 @@ The setup script creates an isolated AWS environment for running Caution enclave
 4. **Builder Role** - Allows builder instances to:
    - Read existing enclave images from the S3 bucket
    - Upload new enclave image objects into the same bucket
-   - Use the generated `builder_role_name` and `builder_instance_profile_name` output values
+   - Use the generated `builder_instance_profile_name` output value when launching EC2 builder instances
 
 5. **Launch Template** - Preconfigured for enclave instances:
    - Uses Amazon Linux 2023 AMI
@@ -145,6 +145,7 @@ The IAM policy uses AWS condition keys to enforce scope:
 - Read/write enclave images to the deployment's S3 bucket
 - Start/stop/terminate EC2 instances with the deployment tag
 - Create new instances via the ASG (automatically tagged)
+- Assign the deployment's EC2 and builder instance profiles to EC2 instances
 - Manage volumes, security groups, and EIPs with the deployment tag
 - Scale the specific Auto Scaling Group
 - Create and manage launch template versions
