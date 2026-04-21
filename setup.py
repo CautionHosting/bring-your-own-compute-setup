@@ -461,7 +461,13 @@ def create_scoped_iam_policy(account_id, region, deployment_id, eif_bucket, vpc_
         # S3 bucket access
         {
             "Effect": "Allow",
-            "Action": ["s3:GetObject", "s3:PutObject", "s3:DeleteObject", "s3:ListBucket"],
+            "Action": [
+                "s3:GetObject",
+                "s3:PutObject",
+                "s3:PutObjectTagging",
+                "s3:DeleteObject",
+                "s3:ListBucket",
+            ],
             "Resource": [f"arn:aws:s3:::{eif_bucket}", f"arn:aws:s3:::{eif_bucket}/*"],
         },
         # Read-only operations (use wildcards to save space)

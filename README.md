@@ -124,7 +124,7 @@ The setup script creates an isolated AWS environment for running Caution enclave
 
 7. **Scoped IAM User** - Credentials for Caution to manage the deployment:
    - Can only manage resources tagged with the deployment ID
-   - Can only access the specific S3 bucket
+   - Can only access and tag objects in the specific S3 bucket
    - Can only scale the specific ASG
 
 ## Security Model
@@ -142,7 +142,7 @@ The IAM policy uses AWS condition keys to enforce scope:
 
 ### What the Scoped Credentials CAN Do
 
-- Read/write enclave images to the deployment's S3 bucket
+- Read/write and tag enclave image objects in the deployment's S3 bucket
 - Start/stop/terminate EC2 instances with the deployment tag
 - Create new instances via the ASG (automatically tagged)
 - Assign the deployment's EC2 and builder instance profiles to EC2 instances

@@ -225,15 +225,16 @@ def delete_vpc_resources(ec2, deployment_id):
         except ClientError as e:
             print(f"  Warning: Could not delete IGW {igw_id}: {e}")
 
-    # Delete route tables (except main)
+    # Delete every non-main route table. Route tables can become orphaned
+    # after subnet deletion, and those won't match association.main=false.
     route_tables = ec2.describe_route_tables(
-        Filters=[
-            {"Name": "vpc-id", "Values": [vpc_id]},
-            {"Name": "association.main", "Values": ["false"]},
-        ]
+        Filters=[{"Name": "vpc-id", "Values": [vpc_id]}]
     )
     for rt in route_tables["RouteTables"]:
         rt_id = rt["RouteTableId"]
+        is_main = any(assoc.get("Main", False) for assoc in rt.get("Associations", []))
+        if is_main:
+            continue
         try:
             # Disassociate first
             for assoc in rt.get("Associations", []):
