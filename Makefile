@@ -7,6 +7,7 @@ OCI_TAR := build/oci/$(IMAGE_NAME).tar
 
 build:
 	./build.sh
+	docker load < $(OCI_TAR)
 
 clean:
 	rm -rf build/
@@ -15,7 +16,6 @@ clean:
 rebuild: clean build
 
 run: build
-	docker load < $(OCI_TAR)
 	docker run --rm \
 		--env-file .env \
 		-v "$(PWD)/out:/out" \

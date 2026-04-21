@@ -4,9 +4,10 @@ Create AWS infrastructure for a managed on-premises Caution deployment.
 This script creates an isolated environment for running Caution enclaves:
 1. Creates a dedicated VPC with subnets, internet gateway, and routing
 2. Creates an S3 bucket for enclave image storage
-3. Creates an EC2 instance role and launch template
-4. Creates an Auto Scaling Group with a unique deployment tag
-5. Creates an IAM user with permissions scoped to only these resources
+3. Creates EC2 instance roles for runtime and builder workloads
+4. Creates a launch template
+5. Creates an Auto Scaling Group with a unique deployment tag
+6. Creates an IAM user with permissions scoped to only these resources
 
 Each deployment is completely isolated - the IAM user can only manage
 resources within its own VPC and those tagged with its deployment ID.
@@ -207,11 +208,8 @@ def create_eif_bucket(s3, deployment_id, region):
     return bucket_name
 
 
-def create_ec2_instance_role(iam, deployment_id, bucket_name):
-    """Create an IAM role for EC2 instances to read from the enclave image bucket."""
-    role_name = f"caution-ec2-role-{deployment_id}"
-    profile_name = f"caution-ec2-profile-{deployment_id}"
-
+def create_ec2_trust_policy():
+    """Create the trust policy used by EC2 instance roles."""
     trust_policy = {
         "Version": "2012-10-17",
         "Statement": [
@@ -222,21 +220,20 @@ def create_ec2_instance_role(iam, deployment_id, bucket_name):
             }
         ],
     }
+    return trust_policy
 
-    s3_policy = {
-        "Version": "2012-10-17",
-        "Statement": [
-            {
-                "Sid": "ReadEifBucket",
-                "Effect": "Allow",
-                "Action": ["s3:GetObject", "s3:ListBucket"],
-                "Resource": [
-                    f"arn:aws:s3:::{bucket_name}",
-                    f"arn:aws:s3:::{bucket_name}/*",
-                ],
-            },
-        ],
-    }
+
+def create_instance_role(
+    iam,
+    deployment_id,
+    role_name,
+    profile_name,
+    description,
+    policy_name,
+    policy_document,
+):
+    """Create an EC2-assumable IAM role and instance profile."""
+    trust_policy = create_ec2_trust_policy()
 
     try:
         iam.get_role(RoleName=role_name)
@@ -264,7 +261,7 @@ def create_ec2_instance_role(iam, deployment_id, bucket_name):
     iam.create_role(
         RoleName=role_name,
         AssumeRolePolicyDocument=json.dumps(trust_policy),
-        Description=f"EC2 role for Caution deployment {deployment_id}",
+        Description=description,
         Tags=[
             {"Key": SCOPE_TAG_KEY, "Value": deployment_id},
             {"Key": "ManagedBy", "Value": "caution-managed-onprem"},
@@ -273,8 +270,8 @@ def create_ec2_instance_role(iam, deployment_id, bucket_name):
 
     iam.put_role_policy(
         RoleName=role_name,
-        PolicyName="EifBucketAccess",
-        PolicyDocument=json.dumps(s3_policy),
+        PolicyName=policy_name,
+        PolicyDocument=json.dumps(policy_document),
     )
 
     iam.create_instance_profile(
@@ -292,6 +289,71 @@ def create_ec2_instance_role(iam, deployment_id, bucket_name):
     time.sleep(10)
 
     return role_name, profile_name
+
+
+def create_ec2_instance_role(iam, deployment_id, bucket_name):
+    """Create an IAM role for EC2 instances to read from the enclave image bucket."""
+    role_name = f"caution-ec2-role-{deployment_id}"
+    profile_name = f"caution-ec2-profile-{deployment_id}"
+
+    s3_policy = {
+        "Version": "2012-10-17",
+        "Statement": [
+            {
+                "Sid": "ReadEifBucket",
+                "Effect": "Allow",
+                "Action": ["s3:GetObject", "s3:ListBucket"],
+                "Resource": [
+                    f"arn:aws:s3:::{bucket_name}",
+                    f"arn:aws:s3:::{bucket_name}/*",
+                ],
+            },
+        ],
+    }
+
+    return create_instance_role(
+        iam,
+        deployment_id,
+        role_name,
+        profile_name,
+        f"EC2 role for Caution deployment {deployment_id}",
+        "EifBucketAccess",
+        s3_policy,
+    )
+
+
+def create_builder_instance_role(iam, deployment_id, bucket_name):
+    """Create an IAM role for builder instances to publish objects to the enclave image bucket."""
+    role_name = f"caution-builder-role-{deployment_id}"
+    profile_name = f"caution-builder-profile-{deployment_id}"
+
+    s3_policy = {
+        "Version": "2012-10-17",
+        "Statement": [
+            {
+                "Sid": "ListEifBucket",
+                "Effect": "Allow",
+                "Action": ["s3:ListBucket"],
+                "Resource": [f"arn:aws:s3:::{bucket_name}"],
+            },
+            {
+                "Sid": "ManageEifObjects",
+                "Effect": "Allow",
+                "Action": ["s3:GetObject", "s3:PutObject"],
+                "Resource": [f"arn:aws:s3:::{bucket_name}/*"],
+            },
+        ],
+    }
+
+    return create_instance_role(
+        iam,
+        deployment_id,
+        role_name,
+        profile_name,
+        f"Builder role for Caution deployment {deployment_id}",
+        "BuilderBucketAccess",
+        s3_policy,
+    )
 
 
 
@@ -688,7 +750,7 @@ def main():
     existing_vpc_id = os.environ.get("VPC_ID")
     if existing_vpc_id:
         # Use existing VPC (advanced users only)
-        print("[1/6] Using existing VPC...")
+        print("[1/7] Using existing VPC...")
         vpc_id = existing_vpc_id
         print(f"  VPC: {vpc_id}")
         subnets = get_subnets_for_vpc(ec2, vpc_id)
@@ -699,29 +761,38 @@ def main():
         print("  [!] Note: Using existing VPC - network interface operations will be scoped to this VPC")
     else:
         # Create a dedicated VPC for this deployment (recommended)
-        print("[1/6] Creating dedicated VPC for this deployment...")
+        print("[1/7] Creating dedicated VPC for this deployment...")
         vpc_id, subnets = create_vpc(ec2, deployment_id, region)
         print(f"  VPC: {vpc_id}")
         print(f"  Subnets: {len(subnets)} created")
 
     # Create S3 bucket for enclave image storage
     print()
-    print("[2/6] Creating S3 bucket for enclave image storage...")
+    print("[2/7] Creating S3 bucket for enclave image storage...")
     eif_bucket = create_eif_bucket(s3, deployment_id, region)
     print(f"  Bucket: {eif_bucket}")
 
     # Create EC2 instance role and profile
     print()
-    print("[3/6] Creating EC2 instance role and profile...")
+    print("[3/7] Creating EC2 instance role and profile...")
     ec2_role_name, instance_profile_name = create_ec2_instance_role(
         iam, deployment_id, eif_bucket
     )
     print(f"  Role: {ec2_role_name}")
     print(f"  Instance Profile: {instance_profile_name}")
 
+    # Create builder role and profile
+    print()
+    print("[4/7] Creating builder role and profile...")
+    builder_role_name, builder_instance_profile_name = create_builder_instance_role(
+        iam, deployment_id, eif_bucket
+    )
+    print(f"  Role: {builder_role_name}")
+    print(f"  Instance Profile: {builder_instance_profile_name}")
+
     # Create launch template
     print()
-    print("[4/6] Creating launch template...")
+    print("[5/7] Creating launch template...")
     template_name, template_id = create_launch_template(
         ec2, deployment_id, region, instance_profile_name
     )
@@ -729,14 +800,14 @@ def main():
 
     # Create Auto Scaling Group
     print()
-    print("[5/6] Creating Auto Scaling Group...")
+    print("[6/7] Creating Auto Scaling Group...")
     asg_name = create_auto_scaling_group(asg_client, deployment_id, template_name, subnets)
     print(f"  ASG: {asg_name}")
     print(f"  Tag: {SCOPE_TAG_KEY}={deployment_id}")
 
     # Create IAM user with scoped policy
     print()
-    print("[6/6] Creating scoped IAM user...")
+    print("[7/7] Creating scoped IAM user...")
     user_name = f"caution-provisioner-{deployment_id}"
     policy = create_scoped_iam_policy(account_id, region, deployment_id, eif_bucket, vpc_id)
     access_key, secret_key = create_iam_user(iam, account_id, user_name, policy, deployment_id)
@@ -754,6 +825,7 @@ def main():
         "subnet_ids": subnets,
         "eif_bucket": eif_bucket,
         "instance_profile_name": instance_profile_name,
+        "builder_instance_profile_name": builder_instance_profile_name,
         "iam_user": user_name,
         "aws_access_key_id": access_key,
         "aws_secret_access_key": secret_key,

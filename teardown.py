@@ -6,8 +6,9 @@ This script removes all resources created by setup.py:
 2. Launch Template
 3. IAM User and Policy
 4. EC2 Instance Role and Profile
-5. S3 Bucket (emptied first)
-6. VPC and related resources (if created by setup)
+5. Builder Role and Profile
+6. S3 Bucket (emptied first)
+7. VPC and related resources (if created by setup)
 
 Environment variables:
   AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY - AWS credentials (required)
@@ -107,11 +108,8 @@ def delete_iam_user(iam, account_id, deployment_id):
         print(f"  IAM Policy not found: {policy_name}")
 
 
-def delete_ec2_role(iam, deployment_id):
-    """Delete the EC2 instance role and profile."""
-    role_name = f"caution-ec2-role-{deployment_id}"
-    profile_name = f"caution-ec2-profile-{deployment_id}"
-
+def delete_instance_role(iam, role_name, profile_name):
+    """Delete an instance role and profile."""
     # Remove role from instance profile and delete profile
     try:
         try:
@@ -148,6 +146,24 @@ def delete_ec2_role(iam, deployment_id):
         print(f"  Deleted IAM Role: {role_name}")
     except iam.exceptions.NoSuchEntityException:
         print(f"  IAM Role not found: {role_name}")
+
+
+def delete_ec2_role(iam, deployment_id):
+    """Delete the EC2 instance role and profile."""
+    delete_instance_role(
+        iam,
+        f"caution-ec2-role-{deployment_id}",
+        f"caution-ec2-profile-{deployment_id}",
+    )
+
+
+def delete_builder_role(iam, deployment_id):
+    """Delete the builder instance role and profile."""
+    delete_instance_role(
+        iam,
+        f"caution-builder-role-{deployment_id}",
+        f"caution-builder-profile-{deployment_id}",
+    )
 
 
 def delete_s3_bucket(s3, deployment_id):
@@ -296,7 +312,7 @@ def main():
     s3 = boto3.client("s3", region_name=region)
 
     # Delete resources in reverse order of creation
-    print("[1/6] Deleting Auto Scaling Group...")
+    print("[1/7] Deleting Auto Scaling Group...")
     delete_asg(asg_client, deployment_id)
 
     # Wait a bit for ASG to clean up instances
@@ -304,23 +320,27 @@ def main():
     time.sleep(5)
 
     print()
-    print("[2/6] Deleting Launch Template...")
+    print("[2/7] Deleting Launch Template...")
     delete_launch_template(ec2, deployment_id)
 
     print()
-    print("[3/6] Deleting IAM User and Policy...")
+    print("[3/7] Deleting IAM User and Policy...")
     delete_iam_user(iam, account_id, deployment_id)
 
     print()
-    print("[4/6] Deleting EC2 Instance Role and Profile...")
+    print("[4/7] Deleting EC2 Instance Role and Profile...")
     delete_ec2_role(iam, deployment_id)
 
     print()
-    print("[5/6] Deleting S3 Bucket...")
+    print("[5/7] Deleting Builder Role and Profile...")
+    delete_builder_role(iam, deployment_id)
+
+    print()
+    print("[6/7] Deleting S3 Bucket...")
     delete_s3_bucket(s3, deployment_id)
 
     print()
-    print("[6/6] Deleting VPC Resources...")
+    print("[7/7] Deleting VPC Resources...")
     delete_vpc_resources(ec2, deployment_id)
 
     print()

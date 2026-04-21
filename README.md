@@ -79,7 +79,7 @@ docker run --rm \
   caution-provisioner-setup
 ```
 
-This outputs `credentials.json.gpg` to the `out/` directory. Then initialize the app with the encrypted credentials:
+This outputs `credentials.json.gpg` to the `out/` directory. The decrypted credentials payload includes `builder_instance_profile_name` for workloads that need to publish new image objects into the deployment bucket. Then initialize the app with the encrypted credentials:
 
 ```bash
 caution init --managed-on-prem --config out/credentials.json.gpg
@@ -107,17 +107,22 @@ The setup script creates an isolated AWS environment for running Caution enclave
    - Read enclave images from the S3 bucket
    - Attached via instance profile to launched instances
 
-4. **Launch Template** - Preconfigured for enclave instances:
+4. **Builder Role** - Allows builder instances to:
+   - Read existing enclave images from the S3 bucket
+   - Upload new enclave image objects into the same bucket
+   - Use the generated `builder_role_name` and `builder_instance_profile_name` output values
+
+5. **Launch Template** - Preconfigured for enclave instances:
    - Uses Amazon Linux 2023 AMI
    - Attaches the EC2 instance role
    - Tags instances with deployment ID
 
-5. **Auto Scaling Group** - Manages enclave instances:
+6. **Auto Scaling Group** - Manages enclave instances:
    - Starts with 0 instances (Caution scales as needed)
    - Uses the launch template
    - Spans all subnets in the VPC
 
-6. **Scoped IAM User** - Credentials for Caution to manage the deployment:
+7. **Scoped IAM User** - Credentials for Caution to manage the deployment:
    - Can only manage resources tagged with the deployment ID
    - Can only access the specific S3 bucket
    - Can only scale the specific ASG
@@ -190,17 +195,10 @@ caution teardown --managed-on-prem
 
 ### Option B: Manual Docker Teardown
 
-Set `DEPLOYMENT_ID` in your `.env` file (printed at the end of setup, or visible in the AWS console on tagged resources):
-
-```
-DEPLOYMENT_ID=your-deployment-id
-```
-
-Then run:
-
 ```bash
 docker run --rm \
   --env-file .env \
+  -e TEARDOWN=true -e DEPLOYMENT_ID=<id> \
   caution-provisioner-setup python teardown.py
 ```
 
@@ -209,5 +207,6 @@ This will delete:
 - Launch Template
 - IAM User and Policy
 - EC2 Instance Role and Profile
+- Builder Role and Profile
 - S3 Bucket (emptied first)
 - VPC and related resources (if created by setup)
