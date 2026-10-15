@@ -1,3 +1,5 @@
+This repository may be mirrored on other Git forges. The [canonical repository](https://git.caution.co/public/bring-your-own-compute-setup) is hosted on git.caution.co. Please open issues and pull requests there.
+
 # Managed On-Prem Setup
 
 Create AWS infrastructure and IAM credentials for [Caution](https://caution.co) managed on-premises deployments.
