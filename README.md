@@ -87,6 +87,15 @@ caution init --managed-on-prem --config out/credentials.json.gpg
 
 To use an existing VPC instead of creating a new one, set `VPC_ID=vpc-xxxxxxxx` in your `.env` file.
 
+By default all subnets in that VPC are used. To restrict the deployment to specific subnets, set `SUBNET_IDS` to a comma-separated list:
+
+```
+VPC_ID=vpc-xxxxxxxx
+SUBNET_IDS=subnet-aaa,subnet-bbb
+```
+
+Subnets outside `VPC_ID` are rejected. `caution init --byoc --vpc-id ... --subnet-ids ...` forwards both variables automatically.
+
 ---
 
 ## How It Works

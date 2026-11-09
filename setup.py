@@ -762,16 +762,30 @@ def main():
 
     # Create or use existing VPC
     existing_vpc_id = os.environ.get("VPC_ID")
+    requested_subnet_ids = [
+        subnet_id.strip()
+        for subnet_id in os.environ.get("SUBNET_IDS", "").split(",")
+        if subnet_id.strip()
+    ]
     if existing_vpc_id:
         # Use existing VPC (advanced users only)
         print("[1/7] Using existing VPC...")
         vpc_id = existing_vpc_id
         print(f"  VPC: {vpc_id}")
-        subnets = get_subnets_for_vpc(ec2, vpc_id)
-        if not subnets:
-            print("[ERROR] No subnets found in VPC.")
-            sys.exit(1)
-        print(f"  Subnets: {len(subnets)} found")
+        if requested_subnet_ids:
+            vpc_subnets = set(get_subnets_for_vpc(ec2, vpc_id))
+            unknown_subnets = [s for s in requested_subnet_ids if s not in vpc_subnets]
+            if unknown_subnets:
+                print(f"[ERROR] Subnets not in VPC {vpc_id}: {', '.join(unknown_subnets)}")
+                sys.exit(1)
+            subnets = requested_subnet_ids
+            print(f"  Subnets: {len(subnets)} selected via SUBNET_IDS")
+        else:
+            subnets = get_subnets_for_vpc(ec2, vpc_id)
+            if not subnets:
+                print("[ERROR] No subnets found in VPC.")
+                sys.exit(1)
+            print(f"  Subnets: {len(subnets)} found")
         print("  [!] Note: Using existing VPC - network interface operations will be scoped to this VPC")
     else:
         # Create a dedicated VPC for this deployment (recommended)
