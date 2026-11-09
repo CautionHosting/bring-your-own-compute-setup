@@ -94,7 +94,9 @@ VPC_ID=vpc-xxxxxxxx
 SUBNET_IDS=subnet-aaa,subnet-bbb
 ```
 
-Subnets outside `VPC_ID` are rejected. `caution init --byoc --vpc-id ... --subnet-ids ...` forwards both variables automatically.
+Subnets outside `VPC_ID` are rejected, and duplicates are removed. The listed subnets must be public (route to an internet gateway): the enclave instance gets an Elastic IP, and inbound traffic reaches it only through public subnets. List order sets preference - the platform places the enclave in the first listed subnet whose availability zone offers the instance type.
+
+`caution init --byoc --vpc-id ... --subnet-ids ...` forwards both variables once the platform CLI supports it (caution/platform#528) and the provisioner image is rebuilt from this change.
 
 ---
 

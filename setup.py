@@ -762,11 +762,14 @@ def main():
 
     # Create or use existing VPC
     existing_vpc_id = os.environ.get("VPC_ID")
-    requested_subnet_ids = [
+    requested_subnet_ids = list(dict.fromkeys(
         subnet_id.strip()
         for subnet_id in os.environ.get("SUBNET_IDS", "").split(",")
         if subnet_id.strip()
-    ]
+    ))
+    if requested_subnet_ids and not existing_vpc_id:
+        print("[ERROR] SUBNET_IDS requires VPC_ID (subnets belong to a VPC).")
+        sys.exit(1)
     if existing_vpc_id:
         # Use existing VPC (advanced users only)
         print("[1/7] Using existing VPC...")
