@@ -15,6 +15,8 @@ if [ -z "$AWS_ACCESS_KEY_ID" ] || [ -z "$AWS_SECRET_ACCESS_KEY" ]; then
     echo "  DEPLOYMENT_ID          - Custom deployment ID (auto-generated if not set)" >&2
     echo "  TEARDOWN               - Set to 'true' to run teardown instead of setup" >&2
     echo "  CLI_MODE               - Set to 'true' to output JSON to stdout (for CLI)" >&2
+    echo "  VPC_ID                 - Use existing VPC instead of creating one" >&2
+    echo "  SUBNET_IDS             - Comma-separated subnets to use from VPC_ID" >&2
     echo "" >&2
     exit 1
 fi
