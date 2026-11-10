@@ -1,5 +1,5 @@
 IMAGE_NAME := caution-managed-on-prem-aws-provisioner
-REGISTRY := codeberg.org/caution
+REGISTRY := git.caution.co/public
 VERSION := $(shell git describe --tags --always --dirty 2>/dev/null || echo "latest")
 OCI_TAR := build/oci/$(IMAGE_NAME).tar
 
